@@ -411,51 +411,56 @@
 
 <span class="cmt">## Regras obrigatórias de sintaxe</span>
 
-1. Use <span class="kw">stateDiagram-v2</span> (versão 2 — suporta setas bidirecionais e anotações modernas). <span class="kw">NÃO</span> use <span class="kw">stateDiagram</span> (legado).
-2. Cada estado é declarado em sua própria linha com a sintaxe <span class="kw">NOME: Rótulo legível</span>. Use nomes curtos em <span class="kw">PascalCase</span> no identificador e um rótulo descritivo entre dois pontos.
-3. Os estados inicial e final usam o marcador <span class="kw">[*]</span>:
-   • <span class="kw">[*] --> Inativo</span>  (estado inicial)
-   • <span class="kw">Ativo --> [*]</span>   (estado final — máquina pode ter vários finais)
-4. Transições usam <span class="kw">ESTADO1 --> ESTADO2: evento()</span>. O texto após os dois pontos é o evento/gatilho, preferencialmente com verbo no infinitivo e parênteses indicando ação.
-5. Cada estado deve ter <span class="kw">pelo menos uma</span> transição de entrada e, exceto estados finais, <span class="kw">pelo menos uma</span> transição de saída.
-6. <span class="kw">NÃO</span> use palavras reservadas como identificadores de estado (<span class="kw">state, direction, classDef, note, transition</span> etc.). Se precisar, use um nome alternativo como <span class="kw">State_</span> ou <span class="kw">St_</span>.
-7. <span class="kw">NÃO</span> repita declarações de estado. Se um estado aparece em uma transição, ele é automaticamente conhecido — não é necessário redeclará-lo. A declaração com rótulo é necessária <span class="kw">somente se</span> você quer um rótulo legível diferente do identificador.
-8. Para notas explicativas use <span class="kw">note right of ESTADO:</span> ou <span class="kw">note left of ESTADO:</span> seguido do texto. Use <span class="kw">\n</span> para quebrar linhas dentro da nota.
-9. Use <span class="kw">direction LR</span> (esquerda para direita) ou <span class="kw">direction TB</span> (cima para baixo) no início do diagrama se quiser forçar a direção.
-10. Não inclua blocos de configuração Mermaid (<span class="kw">%%{init}%%</span>) — o tema já está configurado externamente.
+1. Use <span class="kw">stateDiagram-v2</span> (versão 2 — suporta setas bidirecionais, subestados, fork/join e history). <span class="kw">NÃO</span> use <span class="kw">stateDiagram</span> (legado).
+2. Cada estado é declarado em sua própria linha com a sintaxe <span class="kw">NOME: Rótulo legível</span>. Use nomes curtos em <span class="kw">PascalCase</span> no identificador e um rótulo descritivo entre dois pontos. <span class="kw">NÃO</span> repita declarações: declare com rótulo <span class="kw">somente uma vez</span>.
+3. Inicial e final usam <span class="kw">[*]</span>:
+   • <span class="kw">[*] --> Inativo</span>  (ponto de entrada)
+   • <span class="kw">Ativo --> [*]</span>   (ponto de saída — pode haver vários)
+4. Transições: <span class="kw">DE --> PARA: evento()</span>. Texto após os dois pontos é o gatilho, com verbo no infinitivo e <span class="kw">()</span> indicando ação. Sintaxe completa aceita: <span class="kw">evento [guarda] / efeito</span> (ex: <span class="kw">Pago --> Enviado : pagar [valor&gt;0] / notificar()</span>). Use guarda só quando for regra de negócio real, não pra enfeitar.
+5. <span class="kw">Quantidade de estados</span>: mire em <span class="kw">4–8 estados principais</span> para sistemas típicos. Se a descrição sugerir mais, agrupe em <span class="kw">estados compostos</span> (ver regra 9) em vez de explodir o grafo.
+6. <span class="kw">NÃO</span> invente transições só pra "fechar o ciclo". Um estado pode legitimamente ter 0 saídas se for final (<span class="kw">--&gt; [*]</span>), e pode ter 0 entradas se for inicial (<span class="kw">[*] --&gt;</span>). Estados intermediários têm ≥1 entrada e ≥1 saída, e essas transições devem existir de fato no domínio descrito.
+7. <span class="kw">Direção</span>: use <span class="kw">direction LR</span> (esquerda → direita) por padrão. Use <span class="kw">direction TB</span> (cima → baixo) apenas se o usuário pedir ou se houver mais de 6 estados com ramificações profundas.
+8. Notas explicativas: <span class="kw">note right of ESTADO: texto</span> ou <span class="kw">note left of ESTADO: texto</span>. Use <span class="kw">\n</span> pra quebrar linhas. No máximo 1–2 notas, só nos estados mais importantes.
+9. <span class="kw">Recursos avançados</span> — só use se a descrição do sistema realmente precisar:
+   • <span class="kw">Subestados</span>: <span class="kw">state NomePai { [*] --> Filho1 ... }</span> — pra modelar hierarquia.
+   • <span class="kw">Concorrência (fork/join)</span>: <span class="kw">state Nome { --&gt; state Fork1 &amp;&amp; state Fork2 }</span> — fluxos paralelos.
+   • <span class="kw">Histórico</span>: declare <span class="kw">state H_Nome</span> e referencie com <span class="kw">--&gt; H_Nome</span> — pra retomar último subestado.
+10. <span class="kw">NÃO</span> use palavras reservadas como identificadores (<span class="kw">state, direction, classDef, note, transition</span>). Não inclua <span class="kw">%%{init}%%</span> — o tema já está configurado externamente. Não use acentos nos identificadores (PascalCase ASCII, ex: <span class="kw">EmRevisao</span> em vez de <span class="kw">EmRevisão</span>); os rótulos <span class="kw">com dois pontos</span> podem ter acento.
 
 <span class="cmt">## Regra geral (decorar!)</span>
 
-Sempre use <span class="kw">stateDiagram-v2</span>, declare os estados com rótulo legível <span class="kw">uma única vez</span> e mantenha as transições no formato <span class="kw">DE --> PARA: evento()</span>.
+<span class="kw">stateDiagram-v2</span> + estados declarados <span class="kw">uma vez</span> com rótulo + transições <span class="kw">DE --&gt; PARA: evento()</span> + inicial/final com <span class="kw">[*]</span>. Não invente transições, não infle a contagem de estados.
 
 <span class="cmt">## Estrutura esperada</span>
 
 stateDiagram-v2
     direction LR
 
-    [*] --> EstadoInicial
+    [*] --> Pendente
 
-    EstadoInicial: Estado Inicial
-    Ativo: Ativo
-    EmProcesso: Em Processo
-    Concluido: Concluído
-    Erro: Erro
-    Cancelado: Cancelado
+    Pendente: Pendente
+    EmAndamento: Em Andamento
+    Bloqueada: Bloqueada
+    EmRevisao: Em Revisão
+    Concluida: Concluída
+    Arquivada: Arquivada
 
-    EstadoInicial --> Ativo: iniciar()
-    Ativo --> EmProcesso: executar()
-    EmProcesso --> Concluido: finalizar()
-    EmProcesso --> Erro: falhar()
-    Erro --> EstadoInicial: reiniciar()
-    Concluido --> [*]
-    Cancelado --> [*]
+    Pendente --> EmAndamento: iniciar()
+    EmAndamento --> Bloqueada: bloquear()
+    Bloqueada --> EmAndamento: desbloquear()
+    EmAndamento --> EmRevisao: submeter()
+    EmRevisao --> Concluida: aprovar()
+    EmRevisao --> EmAndamento: rejeitar()
+    Concluida --> Arquivada: arquivar()
+    Arquivada --> [*]
+    Concluida --> [*]
 
-    note right of EmProcesso : Lógica de negócio\nem execução
-    note left of Erro : Estado de falha\nrecuperável
+    note right of EmAndamento : Trabalho ativo\nem andamento
+    note left of Bloqueada : Aguarda decisão\nexterna
 
 <span class="cmt">## Sistema a documentar</span>
 
-<span class="str">[DESCREVA AQUI: entidade ou sistema, seus estados possíveis, eventos que disparam transições, condições de guarda, estados finais aceitáveis]</span></div>
+<span class="str">[DESCREVA AQUI: entidade ou sistema, seus estados possíveis, eventos que disparam transições, condições de guarda, estados finais aceitáveis — quanto mais concreto, melhor o diagrama]</span></div>
     </div>
     <div class="modal-footer">
       <span class="copy-feedback" id="copy-feedback">✓ Copiado!</span>
