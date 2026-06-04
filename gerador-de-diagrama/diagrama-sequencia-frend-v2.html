@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Diagrama de Sequência — Mermaid</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    /* ── Variáveis ── */
+    :root {
+      --bg:          #0b0d14;
+      --surface:     #13151f;
+      --surface2:    #1c1f2e;
+      --surface3:    #242740;
+      --accent:      #6366f1;
+      --accent-soft: #818cf8;
+      --accent-dim:  #312e81;
+      --teal:        #0ea5e9;
+      --teal-dim:    #0c4a6e;
+      --green:       #10b981;
+      --green-dim:   #064e3b;
+      --text:        #e2e8f0;
+      --text-muted:  #94a3b8;
+      --text-faint:  #475569;
+      --border:      #1e2236;
+      --border-soft: #2a2f4a;
+    }
+
+    * { box-sizing:border-box; margin:0; padding:0; }
+
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--accent), var(--teal));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .logo-text { font-size: 0.95rem; font-weight: 700; color: var(--text); }
+    .logo-sub  { font-size: 0.72rem; color: var(--text-muted); margin-top: 1px; }
+    .badge {
+      background: var(--accent-dim);
+      color: var(--accent-soft);
+      border: 1px solid var(--accent);
+      border-radius: 20px;
+      font-size: 0.7rem;
+      padding: 2px 10px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .header-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+    /* ── Botões ── */
+    button {
+      cursor: pointer; border: none; border-radius: 7px;
+      font-size: 0.78rem; font-weight: 600;
+      padding: 6px 13px; transition: all .15s;
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .btn-primary   { background: var(--accent);    color: #fff; }
+    .btn-primary:hover { background: var(--accent-soft); }
+    .btn-teal      { background: var(--teal-dim);  color: var(--teal);  border: 1px solid #0369a1; }
+    .btn-teal:hover { background: #075985; }
+    .btn-green     { background: var(--green-dim); color: var(--green); border: 1px solid #047857; }
+    .btn-green:hover { background: #065f46; }
+    .btn-ghost     { background: var(--surface2);  color: var(--text-muted); border: 1px solid var(--border-soft); }
+    .btn-ghost:hover { background: var(--surface3); color: var(--text); }
+    .btn-icon      { padding: 5px 8px; font-size: 0.85rem; }
+
+    /* ── Info bar ── */
+    .info-bar {
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 24px;
+      display: flex; gap: 24px; flex-wrap: wrap;
+    }
+    .info-item { font-size: 0.75rem; color: var(--text-muted); }
+    .info-item strong { color: var(--text); }
+
+    /* ── Editor section ── */
+    .editor-section {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      overflow: hidden;
+      transition: max-height .35s cubic-bezier(.4,0,.2,1);
+    }
+    .editor-section.collapsed { max-height: 0 !important; border-bottom: none; }
+
+    .section-bar {
+      padding: 7px 16px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.7rem; font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: .07em;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .section-bar .hint { font-size: 0.68rem; color: var(--text-faint); font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+    textarea {
+      background: transparent;
+      color: var(--text);
+      border: none; outline: none;
+      resize: vertical;
+      padding: 14px 18px;
+      font-family: "Fira Code", "Cascadia Code", "Consolas", monospace;
+      font-size: 0.8rem; line-height: 1.7;
+      min-height: 180px; width: 100%;
+      tab-size: 4;
+    }
+    textarea::selection { background: #312e81; }
+
+    /* ── Preview section ── */
+    main { flex: 1; display: flex; flex-direction: column; }
+    .preview-section { flex: 1; display: flex; flex-direction: column; }
+    #preview-container {
+      flex: 1; overflow: auto;
+      display: flex; align-items: flex-start; justify-content: center;
+      padding: 28px 24px;
+      background: radial-gradient(ellipse at 50% 0%, #1a1d2e 0%, var(--bg) 70%);
+    }
+    #diagram-output {
+      background: #f8fafc;
+      border-radius: 14px;
+      padding: 36px 40px;
+      max-width: 100%;
+      box-shadow: 0 8px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(99,102,241,.15);
+    }
+    #diagram-output svg { max-width: 100%; height: auto; display: block; }
+
+    /* ── Estilos SVG do diagrama ── */
+    #diagram-output svg .actor-line {
+      stroke: #6366f1 !important; stroke-width: 1.8px !important;
+      stroke-dasharray: 7 4 !important; opacity: .65;
+    }
+    #diagram-output svg .activation0,
+    #diagram-output svg .activation1,
+    #diagram-output svg .activation2 {
+      fill: #e0f2fe !important; stroke: #0ea5e9 !important; stroke-width: 1.5px !important;
+    }
+    #diagram-output svg .actor {
+      fill: #1e293b !important; stroke: #6366f1 !important; stroke-width: 2px !important;
+    }
+    #diagram-output svg .actor text,
+    #diagram-output svg text.actor {
+      fill: #f1f5f9 !important; font-weight: 700 !important;
+      font-size: 12.5px !important; font-family: "Segoe UI", system-ui, sans-serif !important;
+    }
+    #diagram-output svg .actor-man line,
+    #diagram-output svg .actor-man circle,
+    #diagram-output svg .actor-man path { stroke: #6366f1 !important; fill: #e0e7ff !important; }
+    #diagram-output svg .messageLine0,
+    #diagram-output svg .messageLine1 { stroke: #475569 !important; stroke-width: 1.6px !important; }
+    #diagram-output svg text.messageText {
+      fill: #1e293b !important; font-size: 12px !important;
+      font-family: "Segoe UI", system-ui, sans-serif !important;
+    }
+    #diagram-output svg .label-container rect,
+    #diagram-output svg rect.labelBox { fill: #6366f1 !important; stroke: #4f46e5 !important; }
+    #diagram-output svg .label-container text,
+    #diagram-output svg text.labelText {
+      fill: #fff !important; font-weight: 700 !important; font-size: 11px !important;
+    }
+    #diagram-output svg rect.loopLine,
+    #diagram-output svg .loopLine {
+      stroke: #a5b4fc !important; fill: #eef2ff !important; stroke-width: 1.5px !important;
+    }
+    #diagram-output svg rect.note { fill: #fef9c3 !important; stroke: #ca8a04 !important; stroke-width: 1.4px !important; }
+    #diagram-output svg text.noteText { fill: #713f12 !important; font-size: 11.5px !important; }
+
+    /* ── Barra de preview / zoom ── */
+    .preview-bar {
+      padding: 7px 16px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .preview-bar-label { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .07em; }
+    .zoom-controls { display: flex; gap: 4px; align-items: center; }
+    .zoom-btn {
+      background: var(--surface3); border: 1px solid var(--border-soft);
+      color: var(--text-muted); width: 26px; height: 26px;
+      border-radius: 6px; font-size: .9rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .zoom-btn:hover { color: var(--text); background: var(--border-soft); }
+    .zoom-label { font-size: .7rem; color: var(--text-muted); min-width: 36px; text-align: center; }
+
+    /* ── Rules bar ── */
+    .rules-bar {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 8px 24px;
+      display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+    }
+    .rules-label { font-size: .68rem; color: var(--text-faint); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+    .rule-tag {
+      background: var(--accent-dim); border: 1px solid rgba(99,102,241,.35);
+      border-radius: 5px; padding: 3px 9px;
+      font-size: 0.68rem; color: var(--accent-soft);
+    }
+
+    /* ── Error box ── */
+    .error-box {
+      background: #1a0a0a; border: 1px solid #7f1d1d;
+      border-radius: 8px; padding: 16px; color: #f87171;
+      font-family: monospace; font-size: .8rem; max-width: 600px; line-height: 1.5;
+    }
+
+    /* ── Modal do prompt ── */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.75);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      border-radius: 14px;
+      width: 100%; max-width: 760px;
+      max-height: 90vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 24px 80px rgba(0,0,0,.7);
+      animation: modalIn .2s ease;
+    }
+    @keyframes modalIn {
+      from { opacity:0; transform: translateY(12px) scale(.97); }
+      to   { opacity:1; transform: none; }
+    }
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .modal-title { font-size: .95rem; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
+    .modal-title span { font-size: 1rem; }
+    .modal-close {
+      background: var(--surface2); border: 1px solid var(--border-soft);
+      color: var(--text-muted); width: 28px; height: 28px;
+      border-radius: 7px; font-size: 1rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .modal-close:hover { background: var(--surface3); color: var(--text); }
+    .modal-body { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+    .modal-desc {
+      font-size: .78rem; color: var(--text-muted); line-height: 1.6;
+      background: var(--surface2); border-radius: 8px; padding: 12px 14px;
+      border-left: 3px solid var(--accent);
+    }
+    .prompt-box {
+      background: var(--bg);
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      padding: 16px;
+      font-family: "Fira Code", "Consolas", monospace;
+      font-size: .75rem; line-height: 1.7;
+      color: #cbd5e1;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      max-height: 48vh;
+      flex: 1;
+    }
+    .prompt-box .kw  { color: #a78bfa; }
+    .prompt-box .str { color: #34d399; }
+    .prompt-box .cmt { color: #475569; }
+    .modal-footer {
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+      display: flex; gap: 8px; justify-content: flex-end;
+    }
+    .copy-feedback { font-size: .72rem; color: var(--green); display: none; align-items: center; gap: 4px; }
+    .copy-feedback.show { display: flex; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">📊</div>
+    <div>
+      <div class="logo-text">Diagrama de Sequência</div>
+      <div class="logo-sub">Editor Mermaid com visualização em tempo real</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn-ghost" onclick="togglePromptModal()" title="Ver prompt para IA">
+      🤖 Prompt IA
+    </button>
+    <button class="btn-ghost" id="btn-toggle-editor" onclick="toggleEditor()" title="Recolher/expandir editor">
+      ▲ Editor
+    </button>
+    <button class="btn-primary" onclick="renderDiagram()">▶ Gerar</button>
+    <button class="btn-teal"  onclick="exportSVG()">↓ SVG</button>
+    <button class="btn-green" onclick="exportPNG()">↓ PNG 4×</button>
+  </div>
+</header>
+
+
+<main>
+  <!-- ── Editor ── -->
+  <div class="editor-section" id="editor-section">
+    <div class="section-bar">
+      <span>✏ Código Mermaid</span>
+      <span class="hint">Ctrl+Enter para gerar &nbsp;·&nbsp; auto-render após parar de digitar</span>
+    </div>
+    <textarea id="editor" spellcheck="false">sequenceDiagram
+    actor A as Ator
+    participant S1 as Sistema 1
+    participant S2 as Sistema 2
+
+    A->>+S1: ação do ator
+    S1-->>A: feedback imediato
+
+    alt [condição A]
+        S1-->>A: resultado A
+    else [condição B]
+        S1->>+S2: chamada ao sistema 2
+        S2-->>-S1: retorna dados
+        S1-->>A: resultado B
+    end
+    deactivate S1
+
+    opt [fluxo opcional]
+        A->>+S1: ação opcional
+        S1-->>-A: resposta
+    end</textarea>
+  </div>
+
+  <!-- ── Preview ── -->
+  <div class="preview-section">
+    <div class="preview-bar">
+      <span class="preview-bar-label">👁 Visualização</span>
+      <div class="zoom-controls">
+        <button class="zoom-btn" onclick="zoom(-0.15)" title="Reduzir">−</button>
+        <span class="zoom-label" id="zoom-label">100%</span>
+        <button class="zoom-btn" onclick="zoom(+0.15)" title="Ampliar">+</button>
+        <button class="zoom-btn" onclick="resetZoom()" title="Resetar zoom" style="font-size:.65rem;width:auto;padding:0 7px;">1:1</button>
+      </div>
+    </div>
+    <div id="preview-container">
+      <div id="diagram-output">
+        <div style="color:#475569;text-align:center;padding:32px;font-size:.85rem">Clique em Gerar para renderizar</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+
+<!-- ── Modal Prompt IA ── -->
+<div class="modal-overlay" id="prompt-modal" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title"><span>🤖</span> Prompt para IA — Gerar Diagrama de Sequência Mermaid</div>
+      <button class="modal-close" onclick="togglePromptModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-desc">
+        Cole este prompt em qualquer IA (ChatGPT, Claude, Gemini…) junto com a descrição do seu caso de uso.
+        Ele garante que o diagrama gerado siga as boas práticas de ativação de lifelines e não cause erros no Mermaid.
+      </div>
+      <div class="prompt-box" id="prompt-content">Gere um diagrama de sequência em <span class="kw">Mermaid</span> (sequenceDiagram) para o caso de uso descrito abaixo.
+
+<span class="cmt">## Regras obrigatórias de sintaxe</span>
+
+1. Declare os participantes no topo usando <span class="kw">actor</span> para humanos e <span class="kw">participant</span> para sistemas.
+2. Use <span class="kw">->>+</span> para ativar e <span class="kw">-->>-</span> para desativar lifelines.
+3. <span class="kw">NUNCA</span> use <span class="kw">-->>-</span> nem <span class="kw">deactivate</span> dentro de ramos <span class="kw">alt/else/opt</span> para participantes cuja lifeline foi ativada <span class="kw">antes</span> do bloco. O Mermaid processa os ramos do alt/else em sequência linear — não de forma bifurcada — então o deactivate do ramo de erro "consome" a ativação, e quando o ramo else chega, o participante já está em 0, causando erro <span class="str">"inactivate inactive participant"</span>. Resolva assim:
+   • Mova a resposta desativadora (<span class="kw">-->>-</span>) para <span class="kw">antes</span> do bloco alt, ou
+   • Use <span class="kw">deactivate PARTICIPANTE</span> <span class="kw">depois</span> do <span class="kw">end</span>.
+   • Dentro dos ramos, use setas simples (<span class="kw">-->></span>) sem o <span class="kw">-</span> de desativação.
+4. Use <span class="kw">deactivate PARTICIPANTE</span> explícito <span class="kw">após</span> o <span class="kw">end</span> do bloco <span class="kw">alt/opt</span> quando a lifeline foi aberta antes do bloco — isso garante que o fechamento cubra todos os ramos de forma simétrica.
+5. Coloque a condição de cada ramo entre colchetes no título do <span class="kw">alt</span> / <span class="kw">else</span> / <span class="kw">opt</span>. Exemplo: <span class="str">alt [sem dados registrados]</span>
+6. Use <span class="kw">Note over PARTICIPANTE:</span> apenas para informações técnicas relevantes de um único componente (ex: lista de campos calculados). Não use para descrever processo — isso vai para o texto da seta.
+7. O texto das setas deve ser descritivo: prefira <span class="str">consultarVendas(periodo) + consultarEstoque()</span> a apenas <span class="str">query</span>.
+8. Respostas de retorno usam <span class="kw">-->></span> (tracejado). Chamadas usam <span class="kw">->></span> (sólido).
+9. Não inclua blocos de configuração Mermaid (<span class="kw">%%{init}%%</span>) — o tema já está configurado externamente.
+
+<span class="cmt">## Regra geral (decorar!)</span>
+
+Nunca use <span class="kw">-->>-</span> ou <span class="kw">deactivate</span> dentro de ramos alt/else para participantes ativados antes do bloco — deixe o fechamento para <span class="kw">depois do end</span>.
+
+<span class="cmt">## Estrutura esperada</span>
+
+sequenceDiagram
+    actor ATOR as Nome do Ator
+    participant SIS1 as Nome Sistema 1
+    participant SIS2 as Nome Sistema 2
+    participant SIS3 as Nome Sistema 3
+
+    ATOR->>+SIS1: ação do ator
+    SIS1-->>ATOR: feedback imediato
+    SIS1->>+SIS3: consulta de dados
+    SIS3-->>-SIS1: dados / erro  <span class="cmt">← desativa SIS3 ANTES do alt</span>
+
+    alt [condição de erro]
+        SIS1-->>ATOR: mensagem de erro  <span class="cmt">← seta simples, sem desativar SIS1</span>
+    else [condição de sucesso]
+        SIS1->>+SIS2: chamada ao sistema 2
+        SIS2-->>-SIS1: retorna dados  <span class="cmt">← SIS2 ativado e desativado DENTRO do ramo, OK</span>
+        SIS1-->>ATOR: resultado com sucesso  <span class="cmt">← seta simples</span>
+    end
+    deactivate SIS1  <span class="cmt">← fecha SIS1 DEPOIS do end, cobre os dois ramos</span>
+
+    opt [fluxo opcional — descreva a condição]
+        ATOR->>+SIS1: ação opcional
+        SIS1-->>-ATOR: resposta  <span class="cmt">← OK: ativou e desativou dentro do mesmo bloco</span>
+    end
+
+<span class="cmt">## Caso de uso a documentar</span>
+
+<span class="str">[DESCREVA AQUI: atores, sistemas envolvidos, fluxo principal, fluxos alternativos e regras de negócio]</span></div>
+    </div>
+    <div class="modal-footer">
+      <span class="copy-feedback" id="copy-feedback">✓ Copiado!</span>
+      <button class="btn-ghost" onclick="togglePromptModal()">Fechar</button>
+      <button class="btn-primary" onclick="copyPrompt()">📋 Copiar prompt</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  /* ── Mermaid ── */
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: "base",
+    themeVariables: {
+      primaryColor:          "#1e293b",
+      primaryTextColor:      "#f1f5f9",
+      primaryBorderColor:    "#6366f1",
+      secondaryColor:        "#eef2ff",
+      tertiaryColor:         "#f0f9ff",
+      lineColor:             "#6366f1",
+      textColor:             "#1e293b",
+      noteBkgColor:          "#fef9c3",
+      noteTextColor:         "#713f12",
+      noteBorderColor:       "#ca8a04",
+      activationBkgColor:    "#e0f2fe",
+      activationBorderColor: "#0ea5e9",
+      actorBkg:              "#1e293b",
+      actorBorder:           "#6366f1",
+      actorTextColor:        "#f1f5f9",
+      actorLineColor:        "#6366f1",
+      signalColor:           "#475569",
+      signalTextColor:       "#1e293b",
+      labelBoxBkgColor:      "#6366f1",
+      labelBoxBorderColor:   "#4f46e5",
+      labelTextColor:        "#ffffff",
+      loopTextColor:         "#ffffff",
+      altSectionBkgColor:    "#eef2ff",
+      altSectionBkgColor2:   "#f0f9ff",
+    },
+    sequence: {
+      showSequenceNumbers: false,
+      actorMargin:  60,
+      width:        160,
+      height:       50,
+      boxMargin:    10,
+      boxTextMargin: 5,
+      noteMargin:   10,
+      messageMargin: 40,
+      diagramMarginX: 30,
+      diagramMarginY: 10,
+      useMaxWidth:  true,
+    }
+  });
+
+  let currentZoom = 1.0, renderCount = 0;
+
+  async function renderDiagram() {
+    const code = document.getElementById("editor").value.trim();
+    if (!code) return;
+    const output = document.getElementById("diagram-output");
+    output.innerHTML = "<div style='color:#475569;text-align:center;padding:28px;font-size:.82rem'>Gerando…</div>";
+    try {
+      renderCount++;
+      const { svg } = await mermaid.render("mermaid-" + renderCount, code);
+      output.innerHTML = svg;
+      applyZoom();
+    } catch(err) {
+      output.innerHTML = "<div class='error-box'>⚠ Erro: " + (err.message || err) + "</div>";
+    }
+  }
+
+  /* ── Zoom ── */
+  function applyZoom() {
+    const svg = document.querySelector("#diagram-output svg");
+    if (svg) {
+      svg.style.transform = "scale(" + currentZoom + ")";
+      svg.style.transformOrigin = "top center";
+      svg.style.transition = "transform .18s";
+    }
+  }
+  function zoom(d) {
+    currentZoom = Math.min(Math.max(currentZoom + d, 0.3), 3);
+    document.getElementById("zoom-label").textContent = Math.round(currentZoom * 100) + "%";
+    applyZoom();
+  }
+  function resetZoom() {
+    currentZoom = 1.0;
+    document.getElementById("zoom-label").textContent = "100%";
+    applyZoom();
+  }
+
+  /* ── Toggle editor ── */
+  let editorOpen = true;
+  function toggleEditor() {
+    editorOpen = !editorOpen;
+    const sec = document.getElementById("editor-section");
+    const btn = document.getElementById("btn-toggle-editor");
+    if (editorOpen) {
+      sec.style.maxHeight = sec.scrollHeight + "px";
+      sec.classList.remove("collapsed");
+      btn.textContent = "▲ Editor";
+    } else {
+      sec.style.maxHeight = sec.scrollHeight + "px";
+      requestAnimationFrame(() => {
+        sec.style.maxHeight = "0";
+        sec.classList.add("collapsed");
+      });
+      btn.textContent = "▼ Editor";
+    }
+  }
+  /* inicializa max-height para transição funcionar */
+  window.addEventListener("load", () => {
+    const sec = document.getElementById("editor-section");
+    sec.style.maxHeight = sec.scrollHeight + "px";
+  });
+
+  /* ── Modal prompt ── */
+  function togglePromptModal() {
+    document.getElementById("prompt-modal").classList.toggle("open");
+  }
+  function closeModalOutside(e) {
+    if (e.target === document.getElementById("prompt-modal")) togglePromptModal();
+  }
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.getElementById("prompt-modal").classList.remove("open"); });
+
+  function copyPrompt() {
+    const text = document.getElementById("prompt-content").innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const fb = document.getElementById("copy-feedback");
+      fb.classList.add("show");
+      setTimeout(() => fb.classList.remove("show"), 2000);
+    });
+  }
+
+  /* ── Export ── */
+  function exportSVG() {
+    const svg = document.querySelector("#diagram-output svg");
+    if (!svg) return alert("Gere o diagrama primeiro.");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([svg.outerHTML], { type: "image/svg+xml" }));
+    a.download = "diagrama-sequencia.svg"; a.click();
+  }
+  function exportPNG() {
+    const svg = document.querySelector("#diagram-output svg");
+    if (!svg) return alert("Gere o diagrama primeiro.");
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement("canvas");
+    const bbox = svg.getBoundingClientRect();
+    const scale = 4;
+    canvas.width = bbox.width * scale;
+    canvas.height = bbox.height * scale;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const img = new Image();
+    const url = URL.createObjectURL(new Blob([svgData], { type: "image/svg+xml;charset=utf-8" }));
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      const a = document.createElement("a");
+      a.download = "diagrama-sequencia.png";
+      a.href = canvas.toDataURL("image/png");
+      a.click();
+    };
+    img.src = url;
+  }
+
+  /* ── Atalhos e auto-render ── */
+  document.getElementById("editor").addEventListener("keydown", (e) => {
+    if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); renderDiagram(); }
+  });
+  let debounce;
+  document.getElementById("editor").addEventListener("input", () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(renderDiagram, 900);
+  });
+
+  renderDiagram();
+</script>
+</body>
+</html>
