@@ -581,6 +581,14 @@ kbd {
 .modal-header h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 6px; }
 .modal-header p { font-size: 0.85rem; color: var(--text-secondary); }
 
+/* Export actions */
+.export-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 8px;
+}
+
 /* Progress bar */
 .progress-bar {
     width: 100%;

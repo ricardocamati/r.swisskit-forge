@@ -214,7 +214,10 @@
             </div>
             <p id="exportDetail" class="export-detail"></p>
             <div id="exportResults" class="export-results"></div>
-            <button id="exportCloseBtn" class="btn btn-primary" style="display:none;">Fechar</button>
+            <div class="export-actions">
+                <button id="exportCancelBtn" class="btn btn-ghost btn-danger">Cancelar</button>
+                <button id="exportCloseBtn" class="btn btn-primary" style="display:none;">Fechar</button>
+            </div>
         </div>
     </div>
 
@@ -233,6 +236,7 @@
                 <div class="shortcut-row"><kbd>Shift</kbd>+<kbd>←→</kbd><span>Seek frame a frame</span></div>
                 <div class="shortcut-row"><kbd>C</kbd><span>Preview do corte em loop</span></div>
                 <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>S</kbd><span>Exportar arquivo atual</span></div>
+                <div class="shortcut-row"><kbd>Esc</kbd><span>Cancelar export / fechar modal</span></div>
                 <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Z</kbd><span>Desfazer</span></div>
                 <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Y</kbd><span>Refazer</span></div>
                 <div class="shortcut-row"><kbd>Del</kbd><span>Remover arquivo da fila</span></div>
@@ -253,7 +257,7 @@
     <!-- ===== NOTIFICATION ===== -->
     <div id="notification" class="notification"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+    <script src="vendor/lame.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

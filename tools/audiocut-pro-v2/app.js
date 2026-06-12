@@ -76,10 +76,30 @@ const dom = {
     exportDetail: $('exportDetail'),
     exportResults: $('exportResults'),
     exportCloseBtn: $('exportCloseBtn'),
+    exportCancelBtn: $('exportCancelBtn'),
     helpModal: $('helpModal'),
     helpCloseBtn: $('helpCloseBtn'),
     notification: $('notification'),
 };
+
+// ====== WORKER POOL ======
+let _worker = null;
+let _workerSupported = (typeof Worker !== 'undefined');
+function getWorker() {
+    if (!_workerSupported) return null;
+    if (!_worker) {
+        try {
+            _worker = new Worker('mp3-worker.js');
+        } catch (e) {
+            _workerSupported = false;
+            console.warn('Worker falhou, fallback para main thread:', e);
+        }
+    }
+    return _worker;
+}
+function terminateWorker() {
+    if (_worker) { try { _worker.terminate(); } catch(e){} _worker = null; }
+}
 
 // ====== UTILS ======
 function fmtTime(sec) {
@@ -801,35 +821,81 @@ function bufferToWav(buffer) {
     return arrayBuffer;
 }
 
-function encodeMp3(audioBuffer, kbps=192) {
+function encodeMp3(audioBuffer, kbps = 192) {
+    // Fallback para main thread (caso worker não esteja disponível)
     if (typeof lamejs === 'undefined') throw new Error('lamejs não carregado');
     const sr = audioBuffer.sampleRate;
     const ch = audioBuffer.numberOfChannels;
     const samples = audioBuffer.length;
-
     const mp3encoder = new lamejs.Mp3Encoder(ch, sr, kbps);
     const blockSize = 1152;
     const mp3Data = [];
-
     const left = audioBuffer.getChannelData(0);
     const right = ch > 1 ? audioBuffer.getChannelData(1) : left;
-
     for (let i = 0; i < samples; i += blockSize) {
         const len = Math.min(blockSize, samples - i);
         const l = new Int16Array(len);
         const r = new Int16Array(len);
         for (let j = 0; j < len; j++) {
-            l[j] = Math.max(-32768, Math.min(32767, left[i+j] * 32767));
-            r[j] = ch > 1 ? Math.max(-32768, Math.min(32767, right[i+j] * 32767)) : l[j];
+            l[j] = Math.max(-32768, Math.min(32767, left[i + j] * 32767));
+            r[j] = ch > 1 ? Math.max(-32768, Math.min(32767, right[i + j] * 32767)) : l[j];
         }
         const mp3buf = mp3encoder.encodeBuffer(l, r);
         if (mp3buf.length > 0) mp3Data.push(mp3buf);
     }
     const end = mp3encoder.flush();
     if (end.length > 0) mp3Data.push(end);
+    return new Blob(mp3Data, { type: 'audio/mp3' });
+}
 
-    const blob = new Blob(mp3Data, { type: 'audio/mp3' });
-    return blob;
+// ====== WORKER-BASED ENCODE ======
+let _exportCancelled = false;
+function encodeMp3InWorker(audioBuffer, kbps, onProgress) {
+    return new Promise((resolve, reject) => {
+        const worker = getWorker();
+        if (!worker) {
+            // Fallback síncrono
+            try {
+                const blob = encodeMp3(audioBuffer, kbps);
+                resolve(blob);
+            } catch (e) { reject(e); }
+            return;
+        }
+
+        const ch = audioBuffer.numberOfChannels;
+        const sr = audioBuffer.sampleRate;
+        const total = audioBuffer.length;
+        // Transferable Float32Array copies (workers can't share ArrayBuffer of AudioBuffer directly)
+        const left = new Float32Array(audioBuffer.getChannelData(0));
+        const right = ch > 1 ? new Float32Array(audioBuffer.getChannelData(1)) : left;
+
+        const handler = e => {
+            const msg = e.data;
+            if (msg.type === 'progress') {
+                if (onProgress) onProgress(msg.pct);
+            } else if (msg.type === 'done') {
+                worker.removeEventListener('message', handler);
+                const blob = new Blob([msg.buffer], { type: 'audio/mpeg' });
+                resolve(blob);
+            } else if (msg.type === 'error') {
+                worker.removeEventListener('message', handler);
+                reject(new Error(msg.message));
+            } else if (msg.type === 'aborted') {
+                worker.removeEventListener('message', handler);
+                reject(new Error('Cancelado'));
+            }
+        };
+        worker.addEventListener('message', handler);
+
+        worker.postMessage({
+            type: 'encode',
+            left, right,
+            sampleRate: sr,
+            channels: ch,
+            totalSamples: total,
+            kbps
+        }, [left.buffer, right.buffer]);
+    });
 }
 
 function makeId3Tag(title, artist, comment) {
@@ -883,15 +949,18 @@ async function exportFiles(indices) {
     const targets = indices.map(i => state.files[i]).filter(Boolean);
     if (targets.length === 0) { notify('Nenhum arquivo selecionado', 'error'); return; }
 
+    _exportCancelled = false;
     dom.exportModal.style.display = 'flex';
     dom.exportProgress.style.width = '0%';
     dom.exportResults.innerHTML = '';
     dom.exportCloseBtn.style.display = 'none';
+    dom.exportCancelBtn.style.display = 'inline-flex';
     dom.exportStatus.textContent = `Exportando 0 de ${targets.length}…`;
     state.lastExportResults = [];
 
     let done = 0;
     for (let ti = 0; ti < targets.length; ti++) {
+        if (_exportCancelled) break;
         const f = targets[ti];
         dom.exportDetail.textContent = f.name;
         try {
@@ -906,8 +975,16 @@ async function exportFiles(indices) {
                 sliced.getChannelData(c).set(f.buffer.getChannelData(c).subarray(startSample, endSample));
             }
 
-            const mp3Blob = encodeMp3(sliced, 192);
-            // Prepend simple ID3 tag
+            // Encode in worker with granular progress
+            const mp3Blob = await encodeMp3InWorker(sliced, 192, (pct) => {
+                if (_exportCancelled) return;
+                // Per-file progress: 0..done-1 of total, then half of current
+                const overall = ((done + pct / 100) / targets.length) * 100;
+                dom.exportProgress.style.width = overall + '%';
+                dom.exportStatus.textContent = `Codificando ${f.name} (${pct}%)`;
+            });
+
+            // Prepend ID3 tag
             const tag = makeId3Tag(
                 f.name.replace(/\.[^.]+$/, '') + '_cut',
                 'AudioCut Pro v2',
@@ -928,21 +1005,40 @@ async function exportFiles(indices) {
             state.lastExportResults.push({ name: f.name, ok: true });
         } catch (e) {
             state.lastExportResults.push({ name: f.name, ok: false, error: e.message });
+            if (e.message === 'Cancelado') {
+                dom.exportStatus.textContent = 'Cancelado pelo usuário';
+                break;
+            }
         }
         done++;
         dom.exportProgress.style.width = (done / targets.length * 100) + '%';
         dom.exportStatus.textContent = `Exportando ${done} de ${targets.length}…`;
+
+        // Yield to event loop so UI stays responsive
+        await new Promise(r => setTimeout(r, 10));
     }
 
+    // Cleanup worker
+    terminateWorker();
+
     // Show results
-    dom.exportResults.innerHTML = state.lastExportResults.map(r =>
-        `<div class="export-result-item">
-            <span>${r.name}</span>
-            <span class="${r.ok ? 'success' : 'error'}">${r.ok ? '✓ OK' : '✗ ' + r.error}</span>
-        </div>`
-    ).join('');
-    dom.exportStatus.textContent = `Exportação concluída — ${state.lastExportResults.filter(r=>r.ok).length}/${targets.length} sucesso`;
+    const safeResults = state.lastExportResults.map(r => {
+        const safeName = String(r.name).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const errText = r.error ? String(r.error).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) : '';
+        return `<div class="export-result-item">
+            <span>${safeName}</span>
+            <span class="${r.ok ? 'success' : 'error'}">${r.ok ? '✓ OK' : '✗ ' + errText}</span>
+        </div>`;
+    });
+    dom.exportResults.innerHTML = safeResults.join('');
+    const successCount = state.lastExportResults.filter(r => r.ok).length;
+    if (_exportCancelled) {
+        dom.exportStatus.textContent = `Cancelado — ${successCount}/${targets.length} exportados`;
+    } else {
+        dom.exportStatus.textContent = `Exportação concluída — ${successCount}/${targets.length} sucesso`;
+    }
     dom.exportCloseBtn.style.display = 'inline-flex';
+    dom.exportCancelBtn.style.display = 'none';
     renderFileList();
     updateNavDots();
 }
@@ -1007,7 +1103,21 @@ dom.exportSelectedBtn.addEventListener('click', () => {
     exportFiles(sel);
 });
 
-dom.exportCloseBtn.addEventListener('click', () => dom.exportModal.style.display = 'none');
+dom.exportCloseBtn.addEventListener('click', () => {
+    dom.exportModal.style.display = 'none';
+    _exportCancelled = false;
+});
+dom.exportCancelBtn.addEventListener('click', () => {
+    _exportCancelled = true;
+    // Send cancel signal to worker
+    if (_worker) {
+        try { _worker.postMessage({ type: 'cancel' }); } catch (e) {}
+    }
+    // Hard kill if still running after 200ms
+    setTimeout(() => { if (_exportCancelled) terminateWorker(); }, 200);
+    dom.exportCancelBtn.disabled = true;
+    dom.exportStatus.textContent = 'Cancelando…';
+});
 
 // Undo/redo
 dom.undoBtn.addEventListener('click', undo);
