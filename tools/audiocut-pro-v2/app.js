@@ -5,17 +5,21 @@
 
 // ====== STATE ======
 const state = {
-    files: [],           // { id, name, buffer, sampleRate, duration, start, end, status, history, historyIndex, selected }
+    files: [],
     currentIndex: -1,
     isPlaying: false,
     isPreviewing: false,
     audioCtx: null,
     sourceNode: null,
-    startTime: 0,        // playback start time (AudioContext clock)
-    pauseOffset: 0,      // where we paused
+    startTime: 0,
+    pauseOffset: 0,
     zoom: { scale: 1, offset: 0 },
-    drag: null,          // { type: 'start'|'end'|'seek'|'pan', x0, t0 }
+    drag: null,
     lastExportResults: [],
+    canvasSize: { cssW: 0, cssH: 0, dpr: 1 },
+    peakCache: new WeakMap(), // AudioBuffer -> Float32Array
+    waveformDirty: true,
+    playheadTimer: null,
 };
 
 let rafId = null;
@@ -111,6 +115,7 @@ function stopPlayback() {
     if (state.sourceNode) { try { state.sourceNode.stop(); } catch(e){} state.sourceNode.disconnect(); state.sourceNode = null; }
     state.isPlaying = false; state.isPreviewing = false;
     state.pauseOffset = 0;
+    if (state.playheadTimer) { clearTimeout(state.playheadTimer); state.playheadTimer = null; }
     updatePlayIcon();
     dom.previewCutBtn.classList.remove('preview-active');
 }
@@ -182,25 +187,67 @@ function updateTimeDisplay() {
 }
 
 // ====== WAVEFORM RENDERING ======
-function getWaveformData(buffer, width, startSample, endSample) {
+// ====== CANVAS RESIZE (único, via ResizeObserver) ======
+let resizeObs = null;
+function initCanvasResize() {
+    resizeObs = new ResizeObserver(entries => {
+        for (const entry of entries) {
+            const cr = entry.contentRect;
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            if (state.canvasSize.cssW !== cr.width || state.canvasSize.cssH !== cr.height || state.canvasSize.dpr !== dpr) {
+                state.canvasSize = { cssW: cr.width, cssH: cr.height, dpr };
+                const canvas = dom.waveformCanvas;
+                canvas.width = Math.round(cr.width * dpr);
+                canvas.height = Math.round(cr.height * dpr);
+                state.waveformDirty = true;
+                scheduleDraw();
+            }
+        }
+    });
+    resizeObs.observe(dom.waveformContainer);
+}
+
+// ====== PEAK CACHE ======
+function getCachedPeaks(buffer) {
+    if (state.peakCache.has(buffer)) return state.peakCache.get(buffer);
     const ch = buffer.getChannelData(0);
-    const s0 = Math.max(0, Math.floor(startSample));
-    const s1 = Math.min(ch.length, Math.ceil(endSample));
-    const samplesPerPixel = (s1 - s0) / width;
+    const width = 2000; // suficiente para zoom até 200x
+    const samplesPerPixel = ch.length / width;
     const peaks = new Float32Array(width * 2);
     for (let x = 0; x < width; x++) {
         let min = 0, max = 0;
-        const from = s0 + Math.floor(x * samplesPerPixel);
-        const to = Math.min(s0 + Math.floor((x+1) * samplesPerPixel), s1);
+        const from = Math.floor(x * samplesPerPixel);
+        const to = Math.min(Math.floor((x + 1) * samplesPerPixel), ch.length);
         for (let i = from; i < to; i++) {
             const v = ch[i];
             if (v < min) min = v;
             if (v > max) max = v;
         }
-        peaks[x*2] = min;
-        peaks[x*2+1] = max;
+        peaks[x * 2] = min;
+        peaks[x * 2 + 1] = max;
     }
+    state.peakCache.set(buffer, peaks);
     return peaks;
+}
+
+function getWaveformData(buffer, width, startSample, endSample) {
+    const cached = getCachedPeaks(buffer);
+    const chLen = buffer.getChannelData(0).length;
+    const out = new Float32Array(width * 2);
+    for (let x = 0; x < width; x++) {
+        const cx0 = (startSample + (x / width) * (endSample - startSample)) / chLen * (cached.length / 2);
+        const cx1 = (startSample + ((x + 1) / width) * (endSample - startSample)) / chLen * (cached.length / 2);
+        let min = 0, max = 0;
+        const from = Math.floor(cx0);
+        const to = Math.min(Math.ceil(cx1), cached.length / 2);
+        for (let i = from; i < to; i++) {
+            if (cached[i * 2] < min) min = cached[i * 2];
+            if (cached[i * 2 + 1] > max) max = cached[i * 2 + 1];
+        }
+        out[x * 2] = min;
+        out[x * 2 + 1] = max;
+    }
+    return out;
 }
 
 function amplitudeColor(ctx, amp) {
@@ -210,23 +257,32 @@ function amplitudeColor(ctx, amp) {
     return '#22d3ee';                    // low — cyan
 }
 
-function drawWaveform() {
-    const f = state.files[state.currentIndex];
+function drawWaveform(forceRedraw = false) {
     const canvas = dom.waveformCanvas;
-    const rect = dom.waveformContainer.getBoundingClientRect();
-    canvas.width = rect.width * Math.min(window.devicePixelRatio||1, 2);
-    canvas.height = rect.height * Math.min(window.devicePixelRatio||1, 2);
-    const w = canvas.width, h = canvas.height;
     const ctx = canvas.getContext('2d');
-    ctx.scale(canvas.width/rect.width, canvas.height/rect.height);
+    const cssW = state.canvasSize.cssW || canvas.clientWidth;
+    const cssH = state.canvasSize.cssH || canvas.clientHeight;
+    const dpr = state.canvasSize.dpr || 1;
 
-    ctx.clearRect(0, 0, rect.width, rect.height);
+    if (!cssW || !cssH) return;
 
+    // Only resize canvas when dimensions actually changed (handled by ResizeObserver)
+    if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+        state.waveformDirty = true;
+    }
+
+    // Reset transform and scale once
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    const f = state.files[state.currentIndex];
     if (!f || !f.buffer) {
         ctx.fillStyle = 'rgba(255,255,255,0.06)';
         ctx.font = '13px Inter, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('Nenhum áudio carregado', rect.width/2, rect.height/2);
+        ctx.fillText('Nenhum áudio carregado', cssW / 2, cssH / 2);
         return;
     }
 
@@ -239,85 +295,104 @@ function drawWaveform() {
     const s0 = Math.floor(state.zoom.offset);
     const s1 = Math.min(totalSamples, Math.ceil(state.zoom.offset + viewSamples));
 
-    // Peaks
-    const peaks = getWaveformData(f.buffer, Math.floor(rect.width), s0, s1);
-    const centerY = rect.height / 2;
-    const ampScale = centerY * 0.9;
+    const dirty = forceRedraw || state.waveformDirty;
 
-    // Background grid
-    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let i=1; i<4; i++) {
-        const y = (rect.height / 4) * i;
-        ctx.moveTo(0, y); ctx.lineTo(rect.width, y);
+    if (dirty) {
+        state.waveformDirty = false;
+
+        // Background grid
+        ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 1; i < 4; i++) {
+            const y = (cssH / 4) * i;
+            ctx.moveTo(0, y);
+            ctx.lineTo(cssW, y);
+        }
+        ctx.stroke();
+
+        // Time grid
+        const viewDur = (s1 - s0) / sr;
+        const step = viewDur > 60 ? 10 : viewDur > 20 ? 5 : viewDur > 5 ? 1 : 0.5;
+        const startSec = s0 / sr;
+        const firstMark = Math.ceil(startSec / step) * step;
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.font = '10px Inter, sans-serif';
+        ctx.textAlign = 'left';
+        for (let t = firstMark; t < startSec + viewDur; t += step) {
+            const x = ((t - startSec) / viewDur) * cssW;
+            if (x >= 0 && x <= cssW) {
+                ctx.fillRect(x, 0, 1, cssH);
+                ctx.fillText(fmtTime(t), x + 4, cssH - 6);
+            }
+        }
+
+        // Peaks
+        const peaks = getWaveformData(f.buffer, Math.floor(cssW), s0, s1);
+        const centerY = cssH / 2;
+        const ampScale = centerY * 0.9;
+        const barW = Math.max(1, cssW / (peaks.length / 2) - 1);
+
+        for (let x = 0; x < peaks.length / 2; x++) {
+            const min = peaks[x * 2];
+            const max = peaks[x * 2 + 1];
+            const y0 = centerY - Math.abs(min) * ampScale;
+            const y1 = centerY + Math.abs(max) * ampScale;
+            const avgAmp = (Math.abs(min) + Math.abs(max)) / 2;
+            ctx.fillStyle = amplitudeColor(ctx, avgAmp);
+            ctx.globalAlpha = 0.65;
+            ctx.fillRect(x * (cssW / (peaks.length / 2)), y0, barW, Math.max(1, y1 - y0));
+            ctx.globalAlpha = 1;
+        }
+
+        // Center line
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, centerY);
+        ctx.lineTo(cssW, centerY);
+        ctx.stroke();
     }
-    ctx.stroke();
 
-    // Time grid
-    const viewDur = (s1 - s0) / sr;
-    const step = viewDur > 60 ? 10 : viewDur > 20 ? 5 : viewDur > 5 ? 1 : 0.5;
-    const startSec = s0 / sr;
-    const firstMark = Math.ceil(startSec / step) * step;
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.font = '10px Inter, sans-serif';
-    for (let t = firstMark; t < startSec + viewDur; t += step) {
-        const x = ((t - startSec) / viewDur) * rect.width;
-        ctx.fillRect(x, 0, 1, rect.height);
-        ctx.fillText(fmtTime(t), x + 4, rect.height - 6);
-    }
-
-    // Waveform bars
-    const barW = Math.max(1, rect.width / peaks.length * 2 - 1);
-    for (let x = 0; x < peaks.length/2; x++) {
-        const min = peaks[x*2];
-        const max = peaks[x*2+1];
-        const y0 = centerY - Math.abs(min) * ampScale;
-        const y1 = centerY + Math.abs(max) * ampScale;
-        const avgAmp = (Math.abs(min) + Math.abs(max)) / 2;
-        ctx.fillStyle = amplitudeColor(ctx, avgAmp);
-        ctx.globalAlpha = 0.65;
-        ctx.fillRect(x * (rect.width / (peaks.length/2)), y0, barW, Math.max(1, y1-y0));
-        ctx.globalAlpha = 1;
-    }
-
-    // Center line
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-    ctx.beginPath(); ctx.moveTo(0, centerY); ctx.lineTo(rect.width, centerY); ctx.stroke();
-
-    // Selection area
-    const startX = ((f.start * sr - s0) / viewSamples) * rect.width;
-    const endX = ((f.end * sr - s0) / viewSamples) * rect.width;
-    const selX0 = clamp(Math.min(startX, endX), 0, rect.width);
-    const selX1 = clamp(Math.max(startX, endX), 0, rect.width);
+    // Selection area (always draw on top)
+    const startX = ((f.start * sr - s0) / viewSamples) * cssW;
+    const endX = ((f.end * sr - s0) / viewSamples) * cssW;
+    const selX0 = clamp(Math.min(startX, endX), 0, cssW);
+    const selX1 = clamp(Math.max(startX, endX), 0, cssW);
 
     // Dim outside selection
     ctx.fillStyle = 'rgba(5, 8, 16, 0.45)';
-    ctx.fillRect(0, 0, selX0, rect.height);
-    ctx.fillRect(selX1, 0, rect.width - selX1, rect.height);
+    ctx.fillRect(0, 0, selX0, cssH);
+    ctx.fillRect(selX1, 0, cssW - selX1, cssH);
 
     // Selection glow
-    const grad = ctx.createLinearGradient(selX0, 0, selX1, 0);
-    grad.addColorStop(0, 'rgba(34,211,238,0.08)');
-    grad.addColorStop(0.5, 'rgba(129,140,248,0.06)');
-    grad.addColorStop(1, 'rgba(192,132,252,0.08)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(selX0, 0, selX1 - selX0, rect.height);
+    if (selX1 > selX0) {
+        const grad = ctx.createLinearGradient(selX0, 0, selX1, 0);
+        grad.addColorStop(0, 'rgba(34,211,238,0.08)');
+        grad.addColorStop(0.5, 'rgba(129,140,248,0.06)');
+        grad.addColorStop(1, 'rgba(192,132,252,0.08)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(selX0, 0, selX1 - selX0, cssH);
+    }
 
     // Handles
-    drawHandle(ctx, selX0, rect.height, '#22d3ee', 'INÍCIO');
-    drawHandle(ctx, selX1, rect.height, '#c084fc', 'FIM');
+    drawHandle(ctx, selX0, cssH, '#22d3ee', 'INÍCIO');
+    drawHandle(ctx, selX1, cssH, '#c084fc', 'FIM');
 
-    // Playhead
+    // Playhead (overlay, always drawn)
     const curT = getCurrentPlayTime();
-    const curX = ((curT * sr - s0) / viewSamples) * rect.width;
-    if (curX >= 0 && curX <= rect.width) {
+    const curX = ((curT * sr - s0) / viewSamples) * cssW;
+    if (curX >= 0 && curX <= cssW) {
+        ctx.save();
         ctx.strokeStyle = '#f8fafc';
         ctx.lineWidth = 1.5;
         ctx.shadowColor = 'rgba(255,255,255,0.5)';
         ctx.shadowBlur = 6;
-        ctx.beginPath(); ctx.moveTo(curX, 0); ctx.lineTo(curX, rect.height); ctx.stroke();
-        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.moveTo(curX, 0);
+        ctx.lineTo(curX, cssH);
+        ctx.stroke();
+        ctx.restore();
     }
 }
 
@@ -339,7 +414,10 @@ function scheduleDraw() {
     rafId = requestAnimationFrame(() => {
         drawWaveform();
         updateTimeDisplay();
-        if (state.isPlaying) scheduleDraw();
+        if (state.isPlaying) {
+            if (state.playheadTimer) clearTimeout(state.playheadTimer);
+            state.playheadTimer = setTimeout(() => drawWaveform(false), 50);
+        }
     });
 }
 
@@ -386,6 +464,7 @@ function switchToFile(idx) {
     stopPlayback();
     state.currentIndex = idx;
     state.zoom = { scale: 1, offset: 0 };
+    state.waveformDirty = true;
     dom.currentFileName.textContent = state.files[idx].name;
     updateFileCounter();
     updateNavDots();
@@ -601,16 +680,19 @@ function onWaveformPointerUp() {
 
 function zoomIn() {
     state.zoom.scale = Math.min(state.zoom.scale * 1.5, 200);
+    state.waveformDirty = true;
     updateZoomIndicator();
     scheduleDraw();
 }
 function zoomOut() {
     state.zoom.scale = Math.max(state.zoom.scale / 1.5, 1);
+    state.waveformDirty = true;
     updateZoomIndicator();
     scheduleDraw();
 }
 function zoomFit() {
     state.zoom = { scale: 1, offset: 0 };
+    state.waveformDirty = true;
     updateZoomIndicator();
     scheduleDraw();
 }
@@ -931,6 +1013,7 @@ dom.waveformContainer.addEventListener('wheel', e => {
         const ratio = hoverTime / f.buffer.duration;
         state.zoom.offset = clamp(state.zoom.offset + ratio * (oldView - newView), 0, Math.max(0, totalSamples - newView));
     }
+    state.waveformDirty = true;
     updateZoomIndicator();
     scheduleDraw();
 }, { passive: false });
@@ -993,7 +1076,8 @@ window.addEventListener('resize', () => scheduleDraw());
 
 // ====== INIT ======
 updateZoomIndicator();
-drawWaveform();
+initCanvasResize();
+scheduleDraw();
 
 // Add help button dynamically to header
 const helpBtn = document.createElement('button');

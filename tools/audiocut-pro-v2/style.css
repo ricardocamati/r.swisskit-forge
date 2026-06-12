@@ -423,8 +423,10 @@ kbd {
 /* Waveform */
 .waveform-container {
     position: relative;
-    flex: 1;
+    height: 220px;
     min-height: 180px;
+    max-height: 320px;
+    flex: 1 1 auto;
     background: rgba(0, 0, 0, 0.25);
     border-radius: var(--radius-xs);
     border: 1px solid var(--border);
