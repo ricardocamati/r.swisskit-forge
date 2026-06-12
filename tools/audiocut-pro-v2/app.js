@@ -427,7 +427,11 @@ function scheduleDraw() {
         updateTimeDisplay();
         if (state.isPlaying) {
             if (state.playheadTimer) clearTimeout(state.playheadTimer);
-            state.playheadTimer = setTimeout(() => drawWaveform(false), 50);
+            state.playheadTimer = setTimeout(() => {
+                drawWaveform(false);
+                updateTimeDisplay();
+                if (state.isPlaying) scheduleDraw();
+            }, 50);
         }
     });
 }
@@ -505,6 +509,26 @@ function updateFileCounter() {
 }
 
 // ====== FILE LIST RENDERING ======
+function _getMiniPeaks(buffer) {
+    if (!buffer) return [];
+    if (buffer._miniPeaks) return buffer._miniPeaks;
+    const ch = buffer.getChannelData(0);
+    const BARS = 24;
+    const step = Math.floor(ch.length / BARS) || 1;
+    const peaks = new Float32Array(BARS);
+    let max = 0.0001;
+    for (let b = 0; b < BARS; b++) {
+        const from = b * step, to = Math.min(from + step, ch.length);
+        let sum = 0;
+        for (let s = from; s < to; s++) sum += Math.abs(ch[s]);
+        peaks[b] = sum / (to - from);
+        if (peaks[b] > max) max = peaks[b];
+    }
+    for (let b = 0; b < BARS; b++) peaks[b] = peaks[b] / max;
+    buffer._miniPeaks = peaks;
+    return peaks;
+}
+
 function renderFileList() {
     dom.fileListItems.innerHTML = '';
     state.files.forEach((f, i) => {
@@ -514,15 +538,12 @@ function renderFileList() {
 
         const statusClass = f.status === 'exported' ? 'exported' : (f.start !== 0 || f.end !== f.duration) ? 'cut' : 'pending';
 
-        // Mini waveform bars
+        // Mini waveform bars (cached per buffer)
         let barsHtml = '';
         if (f.buffer) {
-            const ch = f.buffer.getChannelData(0);
-            const step = Math.floor(ch.length / 24);
-            for (let b=0; b<24; b++) {
-                let sum=0; const from=b*step, to=Math.min(from+step, ch.length);
-                for (let s=from; s<to; s++) sum += Math.abs(ch[s]);
-                const h = Math.max(2, (sum/(to-from)) * 24);
+            const peaks = _getMiniPeaks(f.buffer);
+            for (let b = 0; b < peaks.length; b++) {
+                const h = Math.max(2, peaks[b] * 24);
                 barsHtml += `<div class="fi-bar" style="height:${h}px;opacity:${i===state.currentIndex?0.9:0.5}"></div>`;
             }
         }
@@ -530,11 +551,14 @@ function renderFileList() {
         const cutDuration = Math.max(0, f.end - f.start);
         const meta = `${fmtTime(cutDuration)} / ${fmtTime(f.duration)}`;
 
+        // XSS-safe: escape filename
+        const safeName = String(f.name).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
         item.innerHTML = `
             <div class="fi-checkbox"><input type="checkbox" ${f.selected ? 'checked' : ''}></div>
             <div class="fi-thumb">${barsHtml}</div>
             <div class="fi-info">
-                <div class="fi-name">${f.name}</div>
+                <div class="fi-name" title="${safeName}">${safeName}</div>
                 <div class="fi-meta">${meta}</div>
             </div>
             <div class="fi-status ${statusClass}"></div>
@@ -604,23 +628,31 @@ function updateUndoRedoButtons() {
 }
 
 // ====== SELECTION LOGIC ======
+function _viewRect() {
+    // Use cached cssW/cssH from ResizeObserver — never stale
+    return { width: state.canvasSize.cssW, height: state.canvasSize.cssH };
+}
 function timeAtX(x, rect) {
     const f = state.files[state.currentIndex];
     if (!f || !f.buffer) return 0;
+    const r = rect || _viewRect();
+    const w = r.width || 1;
     const sr = f.buffer.sampleRate;
     const totalSamples = f.buffer.duration * sr;
     const viewSamples = totalSamples / state.zoom.scale;
     const s0 = state.zoom.offset;
-    return ((s0 + (x / rect.width) * viewSamples) / sr);
+    return ((s0 + (x / w) * viewSamples) / sr);
 }
 function xAtTime(t, rect) {
     const f = state.files[state.currentIndex];
     if (!f || !f.buffer) return 0;
+    const r = rect || _viewRect();
+    const w = r.width || 1;
     const sr = f.buffer.sampleRate;
     const totalSamples = f.buffer.duration * sr;
     const viewSamples = totalSamples / state.zoom.scale;
     const s0 = state.zoom.offset;
-    return ((t * sr - s0) / viewSamples) * rect.width;
+    return ((t * sr - s0) / viewSamples) * w;
 }
 
 function getHandleAtX(x, rect) {
@@ -635,6 +667,7 @@ function getHandleAtX(x, rect) {
 }
 
 function onWaveformPointerDown(e) {
+    if (_isModalOpen()) return;
     const rect = dom.waveformCanvas.getBoundingClientRect();
     const x = (e.clientX || e.touches?.[0]?.clientX || 0) - rect.left;
     const y = (e.clientY || e.touches?.[0]?.clientY || 0) - rect.top;
@@ -654,6 +687,10 @@ function onWaveformPointerDown(e) {
     }
 }
 function onWaveformPointerMove(e) {
+    if (_isModalOpen() && !state.drag) {
+        dom.seekTooltip.classList.remove('visible');
+        return;
+    }
     const rect = dom.waveformCanvas.getBoundingClientRect();
     const x = (e.clientX || e.touches?.[0]?.clientX || 0) - rect.left;
     const f = state.files[state.currentIndex];
@@ -681,12 +718,18 @@ function onWaveformPointerMove(e) {
     }
     scheduleDraw();
 }
-function onWaveformPointerUp() {
+function onWaveformPointerUp(e) {
     if (state.drag && (state.drag.type === 'start' || state.drag.type === 'end')) {
         pushHistory();
     }
     state.drag = null;
     dom.seekTooltip.classList.remove('visible');
+    // Reset cursor
+    if (dom.waveformContainer) dom.waveformContainer.style.cursor = 'crosshair';
+}
+
+function _isModalOpen() {
+    return dom.exportModal.style.display !== 'none' || dom.helpModal.style.display !== 'none';
 }
 
 function zoomIn() {
@@ -790,20 +833,33 @@ function encodeMp3(audioBuffer, kbps=192) {
 }
 
 function makeId3Tag(title, artist, comment) {
-    // Simple ID3 v2.3 tag
+    // Simple ID3 v2.3 tag with proper UTF-16 BOM
     const encoder = new TextEncoder();
     const frames = [];
     const addFrame = (id, text) => {
+        if (!text) return;
         const data = encoder.encode(text);
-        const size = data.length + 1; // +1 for BOM/encoding byte
+        // UTF-16: BOM (2 bytes) + text in UTF-16 BE
+        const textUtf16 = [];
+        for (let i = 0; i < data.length; i++) textUtf16.push(data[i]);
+        // Encode to UTF-16 BE with BOM
+        let utf16 = '\uFEFF' + text;
+        const encoded = new TextEncoder ? new TextEncoder().encode(utf16) : null;
+        // Use proper UTF-16 BE encoding manually
+        const utf16Bytes = new Uint8Array(2 + text.length * 2);
+        utf16Bytes[0] = 0xFE; utf16Bytes[1] = 0xFF; // BOM
+        for (let i = 0; i < text.length; i++) {
+            const code = text.charCodeAt(i);
+            utf16Bytes[2 + i * 2] = (code >> 8) & 0xFF;
+            utf16Bytes[2 + i * 2 + 1] = code & 0xFF;
+        }
+        const size = utf16Bytes.length;
         const header = new Uint8Array(10);
-        for (let i=0; i<4; i++) header[i] = id.charCodeAt(i);
+        for (let i = 0; i < 4; i++) header[i] = id.charCodeAt(i);
         header[4] = (size >> 24) & 0xFF; header[5] = (size >> 16) & 0xFF;
         header[6] = (size >> 8) & 0xFF; header[7] = size & 0xFF;
-        const body = new Uint8Array(size);
-        body[0] = 1; // UTF-16 with BOM encoding
-        body.set(data, 1);
-        frames.push(header, body);
+        // flags = 0
+        frames.push(header, utf16Bytes);
     };
     if (title) addFrame('TIT2', title);
     if (artist) addFrame('TPE1', artist);
@@ -996,14 +1052,20 @@ dom.selectAllCheckbox.addEventListener('change', () => {
 // Waveform interaction
 dom.waveformCanvas.addEventListener('mousedown', onWaveformPointerDown);
 dom.waveformCanvas.addEventListener('mousemove', onWaveformPointerMove);
+dom.waveformCanvas.addEventListener('mouseleave', () => {
+    dom.seekTooltip.classList.remove('visible');
+    if (!state.drag) dom.waveformContainer.style.cursor = 'crosshair';
+});
 window.addEventListener('mouseup', onWaveformPointerUp);
 dom.waveformCanvas.addEventListener('touchstart', e => { e.preventDefault(); onWaveformPointerDown(e); }, {passive:false});
 dom.waveformCanvas.addEventListener('touchmove', e => { e.preventDefault(); onWaveformPointerMove(e); }, {passive:false});
+dom.waveformCanvas.addEventListener('touchend', e => { e.preventDefault(); onWaveformPointerUp(e); }, {passive:false});
 window.addEventListener('touchend', onWaveformPointerUp);
 
 // Wheel zoom + pan
 dom.waveformContainer.addEventListener('wheel', e => {
     e.preventDefault();
+    if (_isModalOpen()) return;
     const f = state.files[state.currentIndex];
     if (!f || !f.buffer) return;
     const rect = dom.waveformCanvas.getBoundingClientRect();
@@ -1035,6 +1097,17 @@ document.addEventListener('keydown', e => {
         if (e.key === 'Escape') e.target.blur();
         return;
     }
+
+    // Esc always works (close modals / stop preview)
+    if (e.key === 'Escape') {
+        dom.exportModal.style.display = 'none';
+        dom.helpModal.style.display = 'none';
+        if (state.isPreviewing) stopPlayback();
+        return;
+    }
+
+    // Block all other shortcuts when a modal is open
+    if (_isModalOpen()) return;
 
     const k = e.key;
     const ctrl = e.ctrlKey || e.metaKey;
@@ -1072,11 +1145,6 @@ document.addEventListener('keydown', e => {
     else if (k === '-' || k === '_') { e.preventDefault(); zoomOut(); }
     else if (k === 'r' || k === 'R') { e.preventDefault(); dom.resetSelectionBtn.click(); }
     else if (k === '?') { e.preventDefault(); dom.helpModal.style.display = 'flex'; }
-    else if (k === 'Escape') {
-        dom.exportModal.style.display = 'none';
-        dom.helpModal.style.display = 'none';
-        if (state.isPreviewing) stopPlayback();
-    }
 });
 
 // Help
