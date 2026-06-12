@@ -1,0 +1,2 @@
+# Vendor libs (lamejs etc) — use CDN
+tools/*/vendor/

@@ -3,7 +3,7 @@
  * Off-main-thread encoding via lamejs, so large files don't freeze the UI.
  */
 
-importScripts('vendor/lame.min.js');
+importScripts('https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js');
 
 let encoder = null;
 let encState = {

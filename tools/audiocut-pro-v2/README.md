@@ -67,7 +67,8 @@ Formatos suportados na entrada: **MP3, WAV, OGG, FLAC, AAC, M4A, WEBM**
 | `app.js` | Lógica completa: áudio, waveform, exportação MP3 |
 | `mp3-worker.js` | Web Worker — encode MP3 off-main-thread (arquivos grandes não travam) |
 | `style.css` | Estilos visuais — tema glassmorphism dark |
-| `vendor/lame.min.js` | lamejs (local, sem CDN) |
+
+Dependência (CDN): **lamejs** para encode MP3 (carregado no main thread e no worker via importScripts).
 
 ---
 
