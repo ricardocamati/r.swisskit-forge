@@ -83,17 +83,28 @@ const dom = {
 
 // ====== UTILS ======
 function fmtTime(sec) {
-    const m = Math.floor(sec / 60);
+    sec = Math.max(0, sec);
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
     const s = Math.floor(sec % 60);
     const ms = Math.floor((sec % 1) * 1000);
+    if (h > 0) {
+        return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}`;
+    }
     return `${m}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}`;
 }
 function parseTime(str) {
-    const parts = str.replace(',', '.').split(':');
+    // Aceita: HH:MM:SS.mmm, MM:SS.mmm, SS.mmm, ou número simples
+    const cleaned = str.trim().replace(',', '.');
+    const parts = cleaned.split(':');
     if (parts.length === 1) return parseFloat(parts[0]) || 0;
     if (parts.length === 2) {
         const [m, s] = parts;
         return (parseFloat(m)||0)*60 + (parseFloat(s)||0);
+    }
+    if (parts.length === 3) {
+        const [h, m, s] = parts;
+        return (parseFloat(h)||0)*3600 + (parseFloat(m)||0)*60 + (parseFloat(s)||0);
     }
     return 0;
 }
