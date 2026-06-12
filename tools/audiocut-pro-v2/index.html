@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AudioCut Pro v2 — Corte de Áudios em Lote</title>
+    <meta name="description" content="Ferramenta para cortar múltiplos arquivos de áudio em lote e exportar como MP3">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- ===== UPLOAD VIEW ===== -->
+    <div id="uploadView" class="view active">
+        <div class="upload-container">
+            <div class="logo">
+                <div class="logo-icon">✂️</div>
+                <h1>AudioCut <span class="accent">Pro</span><span class="version">v2</span></h1>
+                <p class="subtitle">Corte de áudios em lote — rápido, preciso e 100% local</p>
+            </div>
+            <div id="dropZone" class="drop-zone">
+                <div class="drop-icon">
+                    <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                </div>
+                <p class="drop-text">Arraste seus áudios aqui</p>
+                <p class="drop-hint">ou clique para selecionar arquivos</p>
+                <p class="drop-formats">MP3 · WAV · OGG · FLAC · AAC · M4A · WEBM</p>
+                <input type="file" id="fileInput" multiple accept="audio/*" hidden>
+            </div>
+            <div class="shortcuts-hint">
+                <kbd>Space</kbd> Play/Pause · <kbd>[</kbd> Início · <kbd>]</kbd> Fim · <kbd>←→</kbd> Seek · <kbd>Ctrl+Z</kbd> Desfazer
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== EDITOR VIEW ===== -->
+    <div id="editorView" class="view">
+        <header class="editor-header">
+            <div class="header-left">
+                <div class="header-logo">✂️</div>
+                <h2>AudioCut <span class="accent">Pro</span><span class="version">v2</span></h2>
+            </div>
+            <div class="header-center">
+                <span id="fileCounter" class="file-counter">Arquivo 1 de 1</span>
+            </div>
+            <div class="header-right">
+                <button id="addMoreBtn" class="btn btn-ghost" title="Adicionar mais arquivos (A)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Adicionar
+                </button>
+                <input type="file" id="addFileInput" multiple accept="audio/*" hidden>
+                <button id="exportSelectedBtn" class="btn btn-outline" title="Exportar selecionados">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Selecionados
+                </button>
+                <button id="exportAllBtn" class="btn btn-primary" title="Exportar todos como MP3">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Exportar Todos
+                </button>
+            </div>
+        </header>
+
+        <div class="editor-body">
+            <!-- FILE LIST SIDEBAR -->
+            <aside id="fileList" class="file-list">
+                <div class="file-list-header">
+                    <h3>Arquivos</h3>
+                    <span id="fileListCount" class="badge">0</span>
+                </div>
+                <div id="fileListItems" class="file-list-items"></div>
+                <div class="file-list-footer">
+                    <label class="select-all">
+                        <input type="checkbox" id="selectAllCheckbox">
+                        <span>Selecionar todos</span>
+                    </label>
+                </div>
+            </aside>
+
+            <!-- MAIN EDITOR -->
+            <main class="editor-main">
+                <div class="editor-card">
+                    <!-- Current file name -->
+                    <div class="current-file-info">
+                        <span id="currentFileName" class="current-file-name">—</span>
+                        <div class="file-actions">
+                            <button id="resetSelectionBtn" class="btn btn-ghost btn-sm" title="Resetar seleção (R)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                                Resetar
+                            </button>
+                            <button id="undoBtn" class="btn btn-ghost btn-sm" title="Desfazer (Ctrl+Z)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+                                Desfazer
+                            </button>
+                            <button id="redoBtn" class="btn btn-ghost btn-sm" title="Refazer (Ctrl+Y)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>
+                                Refazer
+                            </button>
+                            <button id="removeFileBtn" class="btn btn-ghost btn-sm btn-danger" title="Remover arquivo da fila (Del)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                Remover
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Zoom controls -->
+                    <div class="zoom-controls">
+                        <button id="zoomOutBtn" class="btn btn-ghost btn-xs" title="Zoom out (-)">−</button>
+                        <div class="zoom-track">
+                            <div id="zoomIndicator" class="zoom-indicator"></div>
+                        </div>
+                        <button id="zoomInBtn" class="btn btn-ghost btn-xs" title="Zoom in (+)">+</button>
+                        <button id="zoomFitBtn" class="btn btn-ghost btn-xs" title="Ajustar à tela (F)">⟲ Ajustar</button>
+                    </div>
+
+                    <!-- Loading indicator -->
+                    <div id="loadingIndicator" class="loading-indicator" style="display:none;">
+                        <div class="spinner"></div>
+                        <span>Decodificando áudio…</span>
+                    </div>
+
+                    <!-- Waveform -->
+                    <div id="waveformContainer" class="waveform-container">
+                        <canvas id="waveformCanvas"></canvas>
+                        <div id="seekTooltip" class="seek-tooltip"></div>
+                    </div>
+
+                    <!-- Time display -->
+                    <div class="time-display">
+                        <div class="time-block">
+                            <label>Início</label>
+                            <input type="text" id="startTimeInput" class="time-input start" value="0:00.000" title="Editar início manualmente">
+                        </div>
+                        <div class="time-block center">
+                            <label>Posição</label>
+                            <span id="currentTimeDisplay" class="time-value">0:00.000</span>
+                        </div>
+                        <div class="time-block">
+                            <label>Fim</label>
+                            <input type="text" id="endTimeInput" class="time-input end" value="0:00.000" title="Editar fim manualmente">
+                        </div>
+                        <div class="time-block">
+                            <label>Duração do corte</label>
+                            <span id="durationDisplay" class="time-value duration">0:00.000</span>
+                        </div>
+                    </div>
+
+                    <!-- Playback controls -->
+                    <div class="controls">
+                        <div class="controls-left">
+                            <button id="setStartBtn" class="btn btn-outline btn-sm" title="Definir início na posição atual ([)">
+                                <span class="key-hint">[</span> Início
+                            </button>
+                            <button id="previewCutBtn" class="btn btn-outline btn-sm btn-accent" title="Pré-visualizar corte em loop (C)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                Preview
+                            </button>
+                        </div>
+                        <div class="controls-center">
+                            <button id="seekBackBtn" class="btn btn-ghost btn-circle" title="Voltar 5s (←)">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="11 18 5 12 11 6"/><path d="M19 18V6"/></svg>
+                            </button>
+                            <button id="playPauseBtn" class="btn btn-primary btn-circle btn-lg" title="Play / Pause (Espaço)">
+                                <svg id="playIcon" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                <svg id="pauseIcon" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                            </button>
+                            <button id="stopBtn" class="btn btn-ghost btn-circle" title="Parar (S)">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                            </button>
+                            <button id="seekForwardBtn" class="btn btn-ghost btn-circle" title="Avançar 5s (→)">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 18 19 12 13 6"/><path d="M5 18V6"/></svg>
+                            </button>
+                        </div>
+                        <div class="controls-right">
+                            <button id="setEndBtn" class="btn btn-outline btn-sm" title="Definir fim na posição atual (])">
+                                Fim <span class="key-hint">]</span>
+                            </button>
+                            <button id="exportThisBtn" class="btn btn-outline btn-sm btn-primary" title="Exportar apenas este arquivo (Ctrl+S)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Este
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Navigation -->
+                    <div class="navigation">
+                        <button id="prevBtn" class="btn btn-ghost" title="Arquivo anterior (P)">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                            Anterior
+                        </button>
+                        <div class="nav-indicators" id="navIndicators"></div>
+                        <button id="nextBtn" class="btn btn-accent" title="Próximo arquivo (N)">
+                            Próximo
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- ===== EXPORT MODAL ===== -->
+    <div id="exportModal" class="modal" style="display:none;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🎵 Exportando Áudios</h3>
+                <p id="exportStatus">Preparando…</p>
+            </div>
+            <div class="progress-bar">
+                <div id="exportProgress" class="progress-fill"></div>
+            </div>
+            <p id="exportDetail" class="export-detail"></p>
+            <div id="exportResults" class="export-results"></div>
+            <button id="exportCloseBtn" class="btn btn-primary" style="display:none;">Fechar</button>
+        </div>
+    </div>
+
+    <!-- ===== HELP MODAL ===== -->
+    <div id="helpModal" class="modal" style="display:none;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-narrow">
+            <h3>⌨️ Atalhos de Teclado</h3>
+            <div class="shortcuts-list">
+                <div class="shortcut-row"><kbd>Space</kbd><span>Play / Pause</span></div>
+                <div class="shortcut-row"><kbd>S</kbd><span>Parar</span></div>
+                <div class="shortcut-row"><kbd>[</kbd><span>Definir início do corte</span></div>
+                <div class="shortcut-row"><kbd>]</kbd><span>Definir fim do corte</span></div>
+                <div class="shortcut-row"><kbd>←</kbd><span>Recuar 5 segundos</span></div>
+                <div class="shortcut-row"><kbd>→</kbd><span>Avançar 5 segundos</span></div>
+                <div class="shortcut-row"><kbd>Shift</kbd>+<kbd>←→</kbd><span>Seek frame a frame</span></div>
+                <div class="shortcut-row"><kbd>C</kbd><span>Preview do corte em loop</span></div>
+                <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>S</kbd><span>Exportar arquivo atual</span></div>
+                <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Z</kbd><span>Desfazer</span></div>
+                <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Y</kbd><span>Refazer</span></div>
+                <div class="shortcut-row"><kbd>Del</kbd><span>Remover arquivo da fila</span></div>
+                <div class="shortcut-row"><kbd>N</kbd><span>Próximo arquivo</span></div>
+                <div class="shortcut-row"><kbd>P</kbd><span>Arquivo anterior</span></div>
+                <div class="shortcut-row"><kbd>A</kbd><span>Adicionar arquivos</span></div>
+                <div class="shortcut-row"><kbd>F</kbd><span>Ajustar zoom à tela</span></div>
+                <div class="shortcut-row"><kbd>+</kbd><span>Zoom in</span></div>
+                <div class="shortcut-row"><kbd>−</kbd><span>Zoom out</span></div>
+                <div class="shortcut-row"><kbd>R</kbd><span>Resetar seleção</span></div>
+                <div class="shortcut-row"><kbd>?</kbd><span>Abrir esta ajuda</span></div>
+                <div class="shortcut-row"><kbd>Esc</kbd><span>Fechar modal / parar preview</span></div>
+            </div>
+            <button id="helpCloseBtn" class="btn btn-primary">Fechar</button>
+        </div>
+    </div>
+
+    <!-- ===== NOTIFICATION ===== -->
+    <div id="notification" class="notification"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

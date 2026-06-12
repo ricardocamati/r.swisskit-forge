@@ -25,6 +25,7 @@ r.swisskit-forge/
 | Ferramenta | Descrição | Tipo |
 |---|---|---|
 | [`audiocut-pro`](./tools/audiocut-pro) | Corte de áudios em lote com seleção visual, exporta em MP3 | HTML |
+| [`audiocut-pro-v2`](./tools/audiocut-pro-v2) | Corte de áudios em lote v2 — glassmorphism, undo/redo, zoom, preview | HTML |
 | [`gerador-de-diagrama`](./tools/gerador-de-diagrama) | Diagramas de sequência e máquina de estados via Mermaid | HTML |
 
 > Tabela atualizada conforme novas ferramentas são adicionadas.
