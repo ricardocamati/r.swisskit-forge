@@ -87,13 +87,15 @@ let _worker = null;
 let _workerSupported = (typeof Worker !== 'undefined');
 function getWorker() {
     if (!_workerSupported) return null;
-    if (!_worker) {
-        try {
-            _worker = new Worker('mp3-worker.js');
-        } catch (e) {
-            _workerSupported = false;
-            console.warn('Worker falhou, fallback para main thread:', e);
-        }
+    if (_worker) return _worker;
+    if (location.protocol === 'file:') {
+        _workerSupported = false;
+        return null;
+    }
+    try {
+        _worker = new Worker('mp3-worker.js');
+    } catch (e) {
+        _workerSupported = false;
     }
     return _worker;
 }

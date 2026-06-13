@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AudioCut Pro v2 — Corte de Áudios em Lote</title>
     <meta name="description" content="Ferramenta para cortar múltiplos arquivos de áudio em lote e exportar como MP3">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" onerror="this.style.display='none'">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -257,7 +257,22 @@
     <!-- ===== NOTIFICATION ===== -->
     <div id="notification" class="notification"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js" onerror="console.warn('Lame.js CDN failed, will use local fallback if available')"></script>
+    <script>
+        // Fallback: se lame.js não carregar (file:// protocol), tenta versão alternativa
+        window.addEventListener('load', () => {
+            if (typeof lamejs === 'undefined') {
+                console.log('Tentando carregar lame.js de fallback...');
+                // Tenta carregar de um CDN alternativo
+                const script = document.createElement('script');
+                script.src = 'https://unpkg.com/lamejs@1.2.1/lame.min.js';
+                script.onerror = () => {
+                    console.warn('Lame.js não disponível. Export funcionará apenas se conectado à internet ou com servidor local.');
+                };
+                document.head.appendChild(script);
+            }
+        });
+    </script>
     <script src="app.js"></script>
 </body>
 </html>
